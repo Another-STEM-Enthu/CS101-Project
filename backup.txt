@@ -1,0 +1,259 @@
+#include <simplecpp>
+#include "shooter.h"
+#include "bubble.h"
+#include <string>
+
+
+
+
+//Check out ctime!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+
+
+
+
+
+/* Simulation Vars */
+const double STEP_TIME = 0.02;
+
+/* Game Vars */
+const int PLAY_Y_HEIGHT = 450;
+const int LEFT_MARGIN = 70;
+const int TOP_MARGIN = 20;
+const int BOTTOM_MARGIN = (PLAY_Y_HEIGHT+TOP_MARGIN);
+bool pause_game = false;
+bool go_loop = true;
+bool create_level = false;                          //when a level changes, new level must be created
+bool game_complete=false;
+int LIFE=3;
+int LEVEL = 1;
+
+void split_bubble(vector<Bubble> &bubbles,int x,int y){
+    bubbles.push_back(Bubble(x, y, BUBBLE_DEFAULT_RADIUS/2, -BUBBLE_DEFAULT_VX, BUBBLE_DEFAULT_VY, COLOR(0,255,0)));
+    bubbles.push_back(Bubble(x, y, BUBBLE_DEFAULT_RADIUS/2, BUBBLE_DEFAULT_VX, BUBBLE_DEFAULT_VY, COLOR(0,255,0)));
+
+}
+
+void move_bullets(vector<Bullet> &bullets){         //passing a vector by reference
+    // move all bullets
+    for(unsigned int i=0; i<bullets.size(); i++){
+        if(!bullets[i].nextStep(STEP_TIME)){
+            bullets.erase(bullets.begin()+i);       //delete the ith bullet if it has gone out of the game screen
+        }
+    }
+}
+
+
+//may need  beginFrame(); and endFrame(); if too many elements come!
+
+void move_bubbles(vector<Bubble> &bubbles){
+
+    // move all bubbles
+    for (unsigned int i=0; i < bubbles.size(); i++)
+    {
+        bubbles[i].nextStep(STEP_TIME);
+    }
+}
+
+vector<Bubble> create_bubbles()
+{
+    // create initial bubbles in the game
+    vector<Bubble> bubbles;
+
+    bubbles.push_back(Bubble(WINDOW_X/2.0, BUBBLE_START_Y, BUBBLE_DEFAULT_RADIUS, -BUBBLE_DEFAULT_VX, BUBBLE_DEFAULT_VY, COLOR(0,0,255)));
+    bubbles.push_back(Bubble(WINDOW_X/4.0, BUBBLE_START_Y - 20 , BUBBLE_DEFAULT_RADIUS, 2 *BUBBLE_DEFAULT_VX, BUBBLE_DEFAULT_VY + 0.2*BUBBLE_DEFAULT_VY, COLOR(0,0,255)));
+    bubbles.push_back(Bubble(WINDOW_X/8.0, BUBBLE_START_Y, BUBBLE_DEFAULT_RADIUS, BUBBLE_DEFAULT_VX, BUBBLE_DEFAULT_VY + 0.2*BUBBLE_DEFAULT_VY, COLOR(0,0,255)));
+    if(LEVEL==3) {
+    BUBBLE_DEFAULT_RADIUS = 35;
+    bubbles.push_back(Bubble(WINDOW_X/8.0, BUBBLE_START_Y, BUBBLE_DEFAULT_RADIUS, BUBBLE_DEFAULT_VX - 0.9*BUBBLE_DEFAULT_VY, BUBBLE_DEFAULT_VY - 0.9*BUBBLE_DEFAULT_VY, COLOR(255,0,0)));
+    BUBBLE_DEFAULT_RADIUS = 20;
+    }
+    return bubbles;
+}
+
+
+void collision_bubble_bullet(vector <Bubble> &bubbles,vector<Bullet> &bullets){
+
+    for(unsigned int i=0;i<bubbles.size();i++){
+    double x=bubbles[i].get_center_x();
+    double y=bubbles[i].get_center_y();
+    double r=bubbles[i].get_radius();
+
+    for(unsigned int j=0;j<bullets.size();j++){
+        if(abs(x-bullets[j].get_center_x())<(bullets[j].get_width()+bubbles[i].get_radius())  && abs(y-bullets[j].get_center_y())<(bullets[j].get_height()+bubbles[i].get_radius())){
+            bullets.erase(bullets.begin()+j);
+            bubbles.erase(bubbles.begin()+i);
+            if(LEVEL > 1 && (r==BUBBLE_DEFAULT_RADIUS || r==35)){
+                split_bubble(bubbles,x,y);
+                }
+        }
+    }
+
+}
+}
+
+
+
+void collision_bubble_shooter(vector <Bubble> &bubbles,Shooter &shooter){
+    double x = shooter.get_body_center_x();
+    double y = shooter.get_body_center_y();
+
+    for(unsigned int j=0;j<bubbles.size();j++){
+    if(abs(x-bubbles[j].get_center_x())<(shooter.get_body_width()+bubbles[j].get_radius()+0.5)  && abs(y-bubbles[j].get_center_y())<(shooter.get_body_height()+bubbles[j].get_radius()+0.5))
+        {
+            pause_game = true;
+            bubbles.erase(bubbles.begin()+j);
+        }
+}
+}
+
+
+void setup_level(vector<Bubble> &bubbles){
+    if(LEVEL==2){
+    BUBBLE_DEFAULT_RADIUS = 20;
+    BUBBLE_DEFAULT_VX = 200;
+    BUBBLE_DEFAULT_VY = 20;
+    }
+
+    if(LEVEL==3){
+    BUBBLE_DEFAULT_RADIUS = 20;
+    BUBBLE_DEFAULT_VX = 350;
+    BUBBLE_DEFAULT_VY = 50;
+    }
+    bubbles = create_bubbles();
+}
+
+
+void level_change(vector<Bubble> &bubbles, vector<Bullet> &bullets){
+    LEVEL++;
+
+    for(unsigned int j=0;j<=bullets.size();j++){
+        bullets.erase(bullets.begin()+j);
+    }
+    if(LEVEL<=3){
+    Text level(256,256,"LEVEL");
+    Text level_val(256 + textWidth("LEVEL")/2 + 7,256,LEVEL);
+    wait(2);
+    setup_level(bubbles);
+    }
+    if(LEVEL>=4)    go_loop=false;
+}
+
+int main()
+{
+
+    initCanvas("Bubble Trouble", WINDOW_X, WINDOW_Y);
+
+    Line b1(0, PLAY_Y_HEIGHT, WINDOW_X, PLAY_Y_HEIGHT);
+    b1.setColor(COLOR(0, 0, 255));
+
+    string msg_cmd("Cmd: _");
+    Text charPressed(LEFT_MARGIN, BOTTOM_MARGIN, msg_cmd);
+
+
+
+    // Intialize the shooter
+    Shooter shooter(SHOOTER_START_X, SHOOTER_START_Y, SHOOTER_VX);
+
+    // Initialize the bubbles
+    vector<Bubble> bubbles = create_bubbles();
+
+    // Initialize the bullets (empty)
+    vector<Bullet> bullets;
+
+    XEvent event;
+
+    // Main game loop
+
+
+    string counter_str = "30";
+    string LIFE_str = "3";
+    double counter = 30; //amount of seconds
+    Text Life(LEFT_MARGIN+ WINDOW_X - 220, BOTTOM_MARGIN, "Life: ");
+
+
+
+    while(go_loop==true)
+    {
+        //Counter bussiness
+        counter-=0.04;
+        //counter_str = to_string(counter);
+        //LIFE_str = to_string(LIFE);
+        if(counter<(0.10))  {go_loop = false;}           //Game over if timer counts to zero
+        Text Timer(LEFT_MARGIN+ WINDOW_X - 150, BOTTOM_MARGIN, counter);
+        Text Life_value(LEFT_MARGIN+ WINDOW_X - 200, BOTTOM_MARGIN, LIFE);
+
+
+
+
+        beginFrame();   //ensures smooth transitions
+        bool pendingEvent = checkEvent(event);
+        if (pendingEvent && !pause_game)
+        {
+            // Get the key pressed
+            char c = charFromEvent(event);
+            msg_cmd[msg_cmd.length() - 1] = c;
+            charPressed.setMessage(msg_cmd);
+
+            // Update the shooter
+            if(c == 'a')
+                shooter.move(STEP_TIME, true);
+            else if(c == 'd')
+                shooter.move(STEP_TIME, false);
+            else if(c == 'w')
+                bullets.push_back(shooter.shoot());
+            else if(c == 'q')
+                return 0;
+        }
+        //Check for Level Change
+        if(bubbles.size()==0){
+            endFrame();
+            if(LEVEL==3) game_complete=true;
+            counter = 45;
+            level_change(bubbles,bullets);
+        }
+        if(LEVEL==4){go_loop=false; break;}                                               //Break out of loop if LEVEL = 4;
+
+        //Check for collision between bubble and shooter
+        if(LEVEL<=3)collision_bubble_shooter(bubbles,shooter);
+
+        if(!pause_game && LEVEL<=3)
+        {
+        //Check for collision between bubble and bullet
+        collision_bubble_bullet(bubbles,bullets);
+
+
+        // Update the bubbles
+        move_bubbles(bubbles);
+
+        // Update the bullets
+        move_bullets(bullets);
+        endFrame();
+        wait(STEP_TIME);
+        }
+
+        if(pause_game && LEVEL<=3){                     //A bubble has hit the shooter
+            endFrame();
+            LIFE--;                         //The bullet has hit the shooter
+            if(LIFE!=0){                    //No Respawning if Life is zero!
+                Text Respawn(256,256,"Respawning..");
+                wait(2);
+            }
+            pause_game = false;
+            if(LIFE == 0)   go_loop = false;//If life is 0, Game over.
+        }
+
+    }
+
+    if(!game_complete){
+        Text Game_Over(256,300,"Game Over!");
+        wait(2);
+    }
+
+    else{
+        Text Game_Over(256,256,"You have completed the game!");
+        wait(2);
+    }
+
+}

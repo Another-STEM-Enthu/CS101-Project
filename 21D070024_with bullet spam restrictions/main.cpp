@@ -1,0 +1,344 @@
+#include <simplecpp>
+#include "shooter.h"
+#include "bubble.h"
+#include <string>
+#include <sstream>
+#include <chrono>
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* Simulation Vars */
+const double STEP_TIME = 0.02;
+
+/* Game Vars */
+const int PLAY_Y_HEIGHT = 450;
+const int LEFT_MARGIN = 70;
+const int TOP_MARGIN = 20;
+const int BOTTOM_MARGIN = (PLAY_Y_HEIGHT+TOP_MARGIN);
+
+//Dynamic Variables
+bool respawn = false;
+bool go_loop = true;
+bool game_complete=false;
+int LIFE = 3;
+int LEVEL = 1;
+int SCORE = 0;
+Color color_pass = COLOR(255,0,0);
+
+
+//To split a large bubble
+void split_bubble(vector<Bubble> &bubbles,int x,int y){
+    bubbles.push_back(Bubble(x, y, BUBBLE_DEFAULT_RADIUS/2, -BUBBLE_DEFAULT_VX, BUBBLE_DEFAULT_VY, COLOR(0,255,0)));
+    bubbles.push_back(Bubble(x, y, BUBBLE_DEFAULT_RADIUS/2, BUBBLE_DEFAULT_VX, BUBBLE_DEFAULT_VY, COLOR(0,255,0)));
+
+}
+
+
+void move_bullets(vector<Bullet> &bullets){         //passing a vector by reference
+    // move all bullets
+    for(unsigned int i=0; i<bullets.size(); i++){
+        if(!bullets[i].nextStep(STEP_TIME)){
+            bullets.erase(bullets.begin()+i);       //delete the ith bullet if it has gone out of the game screen
+        }
+    }
+}
+
+
+
+void move_bubbles(vector<Bubble> &bubbles){
+
+    // move all bubbles
+    for (unsigned int i=0; i < bubbles.size(); i++)
+    {
+        bubbles[i].nextStep(STEP_TIME);
+    }
+}
+
+vector<Bubble> create_bubbles()
+{
+    // create initial bubbles in the game
+    vector<Bubble> bubbles;
+
+    bubbles.push_back(Bubble(WINDOW_X/2.0, BUBBLE_START_Y, BUBBLE_DEFAULT_RADIUS, -BUBBLE_DEFAULT_VX, BUBBLE_DEFAULT_VY, color_pass));
+    bubbles.push_back(Bubble(WINDOW_X/4.0, BUBBLE_START_Y - 20 , BUBBLE_DEFAULT_RADIUS, 2 *BUBBLE_DEFAULT_VX, BUBBLE_DEFAULT_VY + 0.2*BUBBLE_DEFAULT_VY, color_pass));
+    bubbles.push_back(Bubble(WINDOW_X/8.0, BUBBLE_START_Y, BUBBLE_DEFAULT_RADIUS, BUBBLE_DEFAULT_VX, BUBBLE_DEFAULT_VY + 0.2*BUBBLE_DEFAULT_VY, color_pass));
+    if(LEVEL==3) {                  //additional large bubble for level 3
+    BUBBLE_DEFAULT_RADIUS = 35;
+    bubbles.push_back(Bubble(WINDOW_X/8.0, BUBBLE_START_Y, BUBBLE_DEFAULT_RADIUS, BUBBLE_DEFAULT_VX - 0.9*BUBBLE_DEFAULT_VY, BUBBLE_DEFAULT_VY - 0.9*BUBBLE_DEFAULT_VY, COLOR(255,0,0)));
+    BUBBLE_DEFAULT_RADIUS = 20;
+    }
+    return bubbles;
+}
+
+
+//checking for collision between bubble and bullet
+void collision_bubble_bullet(vector <Bubble> &bubbles,vector<Bullet> &bullets){
+
+    for(unsigned int i=0;i<bubbles.size();i++){
+    double x=bubbles[i].get_center_x();
+    double y=bubbles[i].get_center_y();
+    double r=bubbles[i].get_radius();
+
+    for(unsigned int j=0;j<bullets.size();j++){
+        if(abs(x-bullets[j].get_center_x())<(bullets[j].get_width()+bubbles[i].get_radius())  && abs(y-bullets[j].get_center_y())<(bullets[j].get_height()+bubbles[i].get_radius()))
+        {
+            bullets.erase(bullets.begin()+j);
+            bubbles.erase(bubbles.begin()+i);
+            if(LEVEL > 1 && (r==BUBBLE_DEFAULT_RADIUS || r==35)){
+                split_bubble(bubbles,x,y);
+            }
+
+            j=bullets.size(); //If one bullet hits a bubble, that bubble and bullet is destroyed. Move to next bubble;
+            //This also removes the problem of program crashing due to SegFault.
+
+        SCORE += 10;
+        }
+    }
+
+}
+}
+
+
+//checking for collision between bubble and shooter
+void collision_bubble_shooter(vector <Bubble> &bubbles,Shooter &shooter){
+    double x = shooter.get_body_center_x();
+    double y = shooter.get_body_center_y();
+
+    for(unsigned int j=0;j<bubbles.size();j++){
+    if(abs(x-bubbles[j].get_center_x())<(shooter.get_body_width()+bubbles[j].get_radius()+0.5)  && abs(y-bubbles[j].get_center_y())<(shooter.get_body_height()+bubbles[j].get_radius()+0.5))
+        {
+            respawn = true;
+            bubbles.erase(bubbles.begin()+j);
+            SCORE -= 30;
+        }
+}
+}
+
+//Handling setup of new level
+void setup_level(vector<Bubble> &bubbles){
+    if(LEVEL==2){
+    BUBBLE_DEFAULT_RADIUS = 20;
+    BUBBLE_DEFAULT_VX = 200;
+    BUBBLE_DEFAULT_VY = 20;
+    color_pass = COLOR(125,125,0);              //changing color of the ball
+    }
+
+    if(LEVEL==3){
+    BUBBLE_DEFAULT_RADIUS = 20;
+    BUBBLE_DEFAULT_VX = 350;
+    BUBBLE_DEFAULT_VY = 50;
+    color_pass = COLOR(125,0,125);
+    }
+    bubbles = create_bubbles();
+}
+
+//Handling logistics of level change
+void level_change(vector<Bubble> &bubbles, vector<Bullet> &bullets){
+    LEVEL++;
+
+    unsigned int no_bullets = bullets.size();               //Clear all bullets at this level before starting the next level
+    for(unsigned int j=0;j<no_bullets;j++){
+        bullets.erase(bullets.begin()+no_bullets-1-j);
+    }
+
+
+    if(LEVEL<=3){
+    Text level(256,256,"LEVEL");                            //display level
+    Text level_val(256 + textWidth("LEVEL")/2 + 7,256,LEVEL);
+    wait(2);
+    setup_level(bubbles);
+    }
+    if(LEVEL>=4)    go_loop=false;                          //end game
+}
+
+
+
+int main()
+{
+    bool go_loop = true;        //debugging
+
+
+    initCanvas("Bubble Trouble", WINDOW_X, WINDOW_Y);
+
+    Line b1(0, PLAY_Y_HEIGHT, WINDOW_X, PLAY_Y_HEIGHT);
+    b1.setColor(COLOR(0, 0, 255));
+
+    string msg_cmd("Cmd: _");
+    Text charPressed(LEFT_MARGIN, BOTTOM_MARGIN, msg_cmd);
+
+
+
+    // Intialize the shooter
+    Shooter shooter(SHOOTER_START_X, SHOOTER_START_Y, SHOOTER_VX);
+
+    // Initialize the bubbles
+    vector<Bubble> bubbles = create_bubbles();
+
+    // Initialize the bullets (empty)
+    vector<Bullet> bullets;
+
+    XEvent event;
+
+
+    bool pause_game = false;                //for pausing game by using 'p' key on keyboard
+
+    //string versions of counter, life and score, because this prevents flickering
+    string counter_str = "30";
+    string LIFE_str = "3";
+    string SCORE_value = "0";
+
+
+    double counter = 30; //amount of seconds
+    double spam_time = 0;
+    int spam_bullets = 0;
+
+    Text Life(LEFT_MARGIN+ WINDOW_X - 220, BOTTOM_MARGIN, "Life: ");
+    Text Timer(LEFT_MARGIN+ WINDOW_X - 150, BOTTOM_MARGIN, counter_str);
+    Text Life_value(LEFT_MARGIN+ WINDOW_X - 200, BOTTOM_MARGIN, LIFE_str);
+    Text Score(LEFT_MARGIN+ WINDOW_X - 310, BOTTOM_MARGIN, "Score: ");
+    Text Score_value(LEFT_MARGIN+ WINDOW_X - 280, BOTTOM_MARGIN, SCORE_value);
+
+    // Main game loop
+
+
+    while(go_loop==true)
+    {
+
+
+        auto start = std::chrono::system_clock::now();          //start point of loop
+
+
+
+        beginFrame();   //ensures all changes in graphic elements of initCanvas are reflectd together
+        bool pendingEvent = checkEvent(event);
+        if (pendingEvent && !respawn)
+        {
+            // Get the key pressed
+            char c = charFromEvent(event);
+            msg_cmd[msg_cmd.length() - 1] = c;
+            charPressed.setMessage(msg_cmd);
+
+            // Update the shooter
+            if(c == 'a')
+                shooter.move(STEP_TIME, true);
+
+            //Pause Game
+            else if(c == 'p'){
+                    pause_game = !pause_game;
+            }
+
+            else if(c == 'd')
+                shooter.move(STEP_TIME, false);
+
+            else if(c == 'w'){
+                //To prevent spamming of bullets, which causes a large train of bullets and point of game is lost, also game becomes slower then.
+                if(0.5-spam_time < 0.04) {          //Policy : upto 2 bullets can be fired in a counter interval of 1s
+                spam_time = 0;                      //set spam time counter to 0 once it reaches 1s
+                spam_bullets =0;
+                }
+
+                if(spam_bullets<=1) bullets.push_back(shooter.shoot());             //allow shooting only if upto 1 bullet have been fired upto time of spamming <=0.5;
+                spam_bullets +=1;
+                }
+
+
+            else if(c == 'q')
+                return 0;
+        }
+
+
+        if(!pause_game){                                //Move everything only if game is not paused
+
+
+
+        if(counter<(0.01))  {go_loop = false;}           //Game over if timer counts to zero
+
+        //Converting the double and integer values to a string because the display doesn't flicker this way with setMessage();
+        stringstream ss1;
+        ss1 << counter;
+        ss1 >> counter_str;
+        Timer.setMessage(counter_str);
+        stringstream ss2;
+        ss2 << LIFE;
+        ss2 >> LIFE_str;
+        Life_value.setMessage(LIFE_str);
+        stringstream ss3;
+        ss3 << SCORE;
+        ss3 >> SCORE_value;
+        Score_value.setMessage(SCORE_value);
+
+
+
+
+        //Check for Level Change
+        if(bubbles.size()==0){
+            endFrame();
+            if(LEVEL==3) game_complete=true;
+            counter = 48;
+            level_change(bubbles,bullets);
+        }
+        if(LEVEL==4){go_loop=false; break;}                                               //Break out of loop if variable LEVEL = 4;
+
+        //Check for collision between bubble and shooter
+        collision_bubble_shooter(bubbles,shooter);
+
+        if(!respawn)                                            //don't execute this block if shooter is temporarily dead
+        {
+        //Check for collision between bubble and bullet
+        collision_bubble_bullet(bubbles,bullets);
+
+
+        // Update the bubbles
+        move_bubbles(bubbles);
+
+        // Update the bullets
+        move_bullets(bullets);
+        endFrame();
+        wait(STEP_TIME);
+        auto end = std::chrono::system_clock::now();         //end point of loop
+        std::chrono::duration<double> diff = end-start;      //Time taken to execute loop
+        double subtract = diff.count();
+        counter -= subtract;                                 //subtract the time taken to execute loop from countdown
+        spam_time += subtract;                              //update the counter that puts a cap on bullet spamming
+        }
+
+        if(respawn && LEVEL<=3){                     //A bubble has hit the shooter
+            endFrame();                     //This Awesome feature makes the flow smooth!
+            LIFE--;                         //The bullet has hit the shooter
+            if(LIFE!=0){                    //No Respawning if Life is zero!
+                Text Respawn(256,256,"Respawning..");
+                wait(2);
+            }
+            respawn = false;
+            if(LIFE == 0)   go_loop = false;//If life is 0, Game over.
+        }
+
+    }
+
+
+
+
+    }
+
+
+    if(!game_complete){
+        Text Game_Over(256,300,"Game Over!");
+        wait(2);
+    }
+
+    else{
+        Text Game_Over(256,256,"You have completed the game!");
+        wait(2);
+    }
+
+}
